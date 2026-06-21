@@ -10,9 +10,24 @@ use Illuminate\Support\Facades\Storage;
 class BukuController extends Controller
 {
     // TAMPIL DATA
-    public function index()
+    public function index(Request $request)
     {
-        $buku = Buku::with('kategori')->get();
+        $query = Buku::with('kategori');
+
+        // Search
+        if ($request->has('search') && $request->search != '') {
+            $query->where('judul', 'like', '%' . $request->search . '%')
+                ->orWhere('penulis', 'like', '%' . $request->search . '%');
+        }
+
+        // Sort
+        if ($request->has('sort') && $request->has('order')) {
+            $query->orderBy($request->sort, $request->order);
+        } else {
+            $query->latest(); // Default urutan terbaru
+        }
+
+        $buku = $query->paginate(10)->withQueryString();
 
         return view('buku.index', compact('buku'));
     }
@@ -26,25 +41,14 @@ class BukuController extends Controller
     }
 
     // SIMPAN DATA
-    public function store(Request $request)
+    public function store(\App\Http\Requests\BukuRequest $request)
     {
         try {
-
-            $request->validate([
-                'kode_buku' => 'required|unique:bukus',
-                'judul' => 'required',
-                'penulis' => 'required',
-                'penerbit' => 'required',
-                'tahun_terbit' => 'required',
-                'kategori_id' => 'required',
-                'stok' => 'required',
-                'cover_image' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048'
-            ]);
 
             $filename = null;
             if ($request->hasFile('cover_image')) {
                 $file = $request->file('cover_image');
-                $filename = time() . '_' . $file->getClientOriginalName();
+                $filename = time() . '_' . $file->hashName();
                 $file->storeAs('covers', $filename, 'public');
             }
 
@@ -62,17 +66,15 @@ class BukuController extends Controller
             return redirect()
                 ->route('buku.index')
                 ->with('success', 'Data buku berhasil ditambahkan');
-
         } catch (\Exception $e) {
 
             return back()
                 ->with('error', 'Gagal: ' . $e->getMessage());
-
         }
     }
 
     // FORM EDIT
-    public function edit($id)
+    public function edit(int $id)
     {
         $buku = Buku::findOrFail($id);
         $kategori = Kategori::all();
@@ -81,22 +83,11 @@ class BukuController extends Controller
     }
 
     // UPDATE
-    public function update(Request $request, $id)
+    public function update(\App\Http\Requests\BukuRequest $request, int $id)
     {
         try {
 
             $buku = Buku::findOrFail($id);
-
-            $request->validate([
-                'kode_buku' => 'required|unique:bukus,kode_buku,' . $id,
-                'judul' => 'required',
-                'penulis' => 'required',
-                'penerbit' => 'required',
-                'tahun_terbit' => 'required',
-                'kategori_id' => 'required',
-                'stok' => 'required',
-                'cover_image' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048'
-            ]);
 
             $filename = $buku->cover_image;
             if ($request->hasFile('cover_image')) {
@@ -106,7 +97,7 @@ class BukuController extends Controller
                 }
 
                 $file = $request->file('cover_image');
-                $filename = time() . '_' . $file->getClientOriginalName();
+                $filename = time() . '_' . $file->hashName();
                 $file->storeAs('covers', $filename, 'public');
             }
 
@@ -124,17 +115,15 @@ class BukuController extends Controller
             return redirect()
                 ->route('buku.index')
                 ->with('success', 'Data buku berhasil diperbarui');
-
         } catch (\Exception $e) {
 
             return back()
                 ->with('error', 'Gagal update: ' . $e->getMessage());
-
         }
     }
 
     // DELETE
-    public function delete($id)
+    public function delete(int $id)
     {
         try {
 
@@ -150,13 +139,11 @@ class BukuController extends Controller
             return redirect()
                 ->route('buku.index')
                 ->with('success', 'Data buku berhasil dihapus');
-
         } catch (\Exception $e) {
 
             return redirect()
                 ->route('buku.index')
                 ->with('error', 'Gagal menghapus data');
-
         }
     }
 }

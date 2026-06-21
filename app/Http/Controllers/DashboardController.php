@@ -19,13 +19,41 @@ class DashboardController extends Controller
 
         $totalPeminjaman = Peminjaman::where(
             'status',
-            'Dipinjam'
+            'dipinjam'
         )->count();
 
         $totalPengembalian = Peminjaman::where(
             'status',
-            'Dikembalikan'
+            'kembali'
         )->count();
+
+        $totalTerlambat = Peminjaman::where('status', 'dipinjam')
+            ->whereDate('tanggal_kembali', '<', now())
+            ->count();
+
+        $peminjamanTerlambat = Peminjaman::with(['anggota', 'buku'])
+            ->where('status', 'dipinjam')
+            ->whereDate('tanggal_kembali', '<', now())
+            ->get();
+
+        // Update denda real-time untuk semua anggota yang terlambat
+        $anggotaIds = $peminjamanTerlambat->pluck('anggota_id')->unique();
+        foreach ($anggotaIds as $anggotaId) {
+            Peminjaman::updateDendaAnggota($anggotaId);
+        }
+
+        // Reload data setelah update denda
+        $peminjamanTerlambat = Peminjaman::with(['anggota', 'buku'])
+            ->where('status', 'dipinjam')
+            ->whereDate('tanggal_kembali', '<', now())
+            ->get();
+
+        foreach ($peminjamanTerlambat as $trx) {
+            $jatuhTempo = \Carbon\Carbon::parse($trx->tanggal_kembali)->startOfDay();
+            $hariIni = \Carbon\Carbon::now()->startOfDay();
+            $trx->telat_hari = (int) $jatuhTempo->diffInDays($hariIni);
+            $trx->total_denda = $trx->denda;
+        }
 
         return view(
             'dashboard',
@@ -34,7 +62,9 @@ class DashboardController extends Controller
                 'totalKategori',
                 'totalAnggota',
                 'totalPeminjaman',
-                'totalPengembalian'
+                'totalPengembalian',
+                'totalTerlambat',
+                'peminjamanTerlambat'
             )
         );
     }
